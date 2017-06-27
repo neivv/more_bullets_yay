@@ -37,7 +37,15 @@ pub unsafe fn create_bullet(
     *bw::first_free_bullet = bullet;
     *bw::last_free_bullet = bullet;
     let actual_bullet = orig(parent, bullet_id, x, y, player, direction);
-    if actual_bullet != bullet {
+    *bw::first_free_bullet = null_mut();
+    *bw::last_free_bullet = null_mut();
+    if actual_bullet == null_mut() {
+        info!(
+            "Couldn't create bullet {:x} at {:x}.{:x} facing {:x}", bullet_id, x, y, direction
+        );
+        Box::from_raw(bullet);
+        return null_mut();
+    } else if actual_bullet != bullet {
         error!(
             "Created a different bullet from what was expected: {:p} {:p}",
             bullet,
