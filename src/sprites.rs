@@ -312,8 +312,8 @@ pub unsafe fn add_to_drawn_sprites(sprite: *mut bw::Sprite) {
 
 unsafe fn sprite_vision_sync(sprite: *mut bw::Sprite) {
     use std::cmp::{max, min};
-    let sync = bw::sprite_include_in_vision_sync.get((*sprite).sprite_id as usize).cloned();
-    if sync.unwrap_or(0) != 0 {
+    let sync = *(*bw::sprite_include_in_vision_sync).offset((*sprite).sprite_id as isize);
+    if sync != 0 {
         let y_tile = min(max((*sprite).position.y / 32, 0), *bw::map_height_tiles as i16);
         bw::sync_horizontal_lines[y_tile as usize] ^= *bw::player_visions as u8;
     }
@@ -619,16 +619,21 @@ unsafe fn grp_to_id(grp: *mut bw::GrpSprite) -> Result<u16, SaveError> {
     if grp == null_mut() {
         Ok(0)
     } else {
-        bw::image_grps.iter().position(|&ptr| ptr == grp).map(|x| x as u16 + 1)
+        (0..image_count()).position(|i| *(*bw::image_grps).offset(i as isize) == grp)
+            .map(|x| x as u16 + 1)
             .ok_or(SaveError::InvalidGrpPointer)
     }
+}
+
+unsafe fn image_count() -> u32 {
+    (*bw::image_count_part1).checked_add(*bw::image_count_part2).unwrap()
 }
 
 unsafe fn grp_from_id(grp: u16) -> Result<*mut bw::GrpSprite, LoadError> {
     if grp == 0 {
         Ok(null_mut())
-    } else if grp as usize - 1 < bw::image_grps.len() {
-        Ok(bw::image_grps[grp as usize - 1])
+    } else if grp as u32 - 1 < image_count() {
+        Ok(*(*bw::image_grps).offset(grp as isize - 1))
     } else {
         Err(LoadError::Corrupted(format!("Invalid grp {}", grp)))
     }

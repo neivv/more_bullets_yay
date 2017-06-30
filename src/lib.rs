@@ -18,6 +18,8 @@ extern crate serde;
 extern crate winapi;
 extern crate thread_local;
 
+extern crate bw_dat as dat;
+
 #[macro_use] mod macros;
 pub mod mpqdraft;
 
@@ -71,6 +73,8 @@ pub fn patch() {
     unsafe {
         let mut active_patcher = PATCHER.lock().unwrap();
         let mut exe = active_patcher.patch_exe(0x00400000);
+        dat::init(&mut exe);
+
         bw::init_funcs(&mut exe);
         bw::init_funcs_cdecl(&mut exe);
         bw::init_vars(&mut exe);

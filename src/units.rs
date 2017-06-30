@@ -6,6 +6,7 @@ use flate2;
 use libc::c_void;
 
 use bw;
+use dat;
 use entity_serialize::{self, deserialize_entity, entity_serializable, EntitySerializable};
 use save::{fread, fwrite, fread_num, fwrite_num, SaveError, LoadError, print_text};
 use sprites::{
@@ -298,11 +299,11 @@ fn is_resource(unit_id: u16) -> bool {
 }
 
 unsafe fn is_worker(unit_id: u16) -> bool {
-    bw::units_dat_flags[unit_id as usize] & 0x8 != 0
+    dat::units::flags(unit_id) & 0x8 != 0
 }
 
 unsafe fn is_powerup(unit_id: u16) -> bool {
-    bw::units_dat_flags[unit_id as usize] & 0x800 != 0
+    dat::units::flags(unit_id) & 0x800 != 0
 }
 
 #[derive(Serialize, Deserialize, Clone)]

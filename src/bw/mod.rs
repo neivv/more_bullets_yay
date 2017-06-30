@@ -66,14 +66,16 @@ whack_vars!(init_vars, 0x00400000,
     0x0059CCA8 => units: [Unit; 0x6a4];
     0x00629D98 => sprites: [Sprite; 0x9c4];
 
-    0x00629A88 => sprite_include_in_vision_sync: [u8; 0x205];
+    0x0042D517 => sprite_include_in_vision_sync: *mut u8;
     0x0057F1D6 => map_height_tiles: u16;
     0x00629C90 => sync_horizontal_lines: [u8; 0x100];
     0x0057F0B0 => player_visions: u32;
 
     0x00629288 => horizontal_sprite_lines_end: [*mut Sprite; 0x100];
     0x00629688 => horizontal_sprite_lines_begin: [*mut Sprite; 0x100];
-    0x0051CED0 => image_grps: [*mut GrpSprite; 0x3e7];
+    0x004D7268 => image_grps: *mut *mut GrpSprite;
+    0x004D6352 => image_count_part1: u32;
+    0x004D6357 => image_count_part2: u32;
     0x0051290C => remap_palettes: [RemapPalette; 0x7];
 
     0x00512510 => image_updatefuncs: [ImageStepFrame; 0x11];
@@ -108,6 +110,4 @@ whack_vars!(init_vars, 0x00400000,
     0x00654878 => first_free_lone_sprite: *mut LoneSprite;
     0x0065487C => last_free_lone_sprite: *mut LoneSprite;
     0x00652918 => cursor_marker: *mut LoneSprite;
-
-    0x00664080 => units_dat_flags: [u32; 0xe4];
 );
