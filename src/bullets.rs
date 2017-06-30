@@ -11,8 +11,12 @@ use libc::c_void;
 use bw;
 use entity_serialize::{deserialize_entity, entity_serializable, EntitySerializable, unit_to_id,
     unit_from_id};
+use send_pointer::SendPtr;
 
-thread_local!(static BULLETS: RefCell<HashSet<*mut bw::Bullet>> = RefCell::new(HashSet::new()));
+ome2_thread_local! {
+    BULLETS: RefCell<HashSet<SendPtr<bw::Bullet>>> =
+        all_bullets(RefCell::new(HashSet::new()));
+}
 
 const BULLET_SAVE_MAGIC: u16 = 0xffed;
 // 8 megabytes, should be more than enough, both compressed and without.
@@ -52,10 +56,8 @@ pub unsafe fn create_bullet(
             actual_bullet
         );
     }
-    BULLETS.with(|set| {
-        let mut set = set.borrow_mut();
-        set.insert(bullet);
-    });
+    let mut bullets = all_bullets().borrow_mut();
+    bullets.insert(bullet.into());
     bullet
 }
 
@@ -66,26 +68,22 @@ pub unsafe fn delete_bullet(bullet: *mut bw::Bullet, orig: &Fn(*mut bw::Bullet))
         *bw::last_free_bullet = null_mut();
         orig(bullet);
         Box::from_raw(bullet);
-        BULLETS.with(|set| {
-            let mut set = set.borrow_mut();
-            set.remove(&bullet);
-        });
+        let mut bullets = all_bullets().borrow_mut();
+        bullets.remove(&bullet.into());
     }
 }
 
 pub unsafe fn delete_all() {
-    BULLETS.with(|set| {
-        let mut set = set.borrow_mut();
-        for bullet in set.iter() {
-            Box::from_raw(*bullet);
-        }
-        set.clear();
-        // Not sure if these are necessary, but doing this won't hurt either
-        *bw::first_active_bullet = null_mut();
-        *bw::last_active_bullet = null_mut();
-        *bw::first_free_bullet = null_mut();
-        *bw::last_free_bullet = null_mut();
-    });
+    let mut bullets = all_bullets().borrow_mut();
+    for bullet in bullets.iter() {
+        Box::from_raw(**bullet);
+    }
+    bullets.clear();
+    // Not sure if these are necessary, but doing this won't hurt either
+    *bw::first_active_bullet = null_mut();
+    *bw::last_active_bullet = null_mut();
+    *bw::first_free_bullet = null_mut();
+    *bw::last_free_bullet = null_mut();
 }
 
 quick_error! {
@@ -353,12 +351,10 @@ unsafe fn load_bullets(file: *mut c_void) -> Result<(), LoadError> {
             return Err(LoadError::SizeLimit)
         }
     }
-    BULLETS.with(|set| {
-        for bullet in bullets {
-            let mut set = set.borrow_mut();
-            set.insert(Box::into_raw(bullet));
-        }
-    });
+    let mut bullet_set = all_bullets().borrow_mut();
+    for bullet in bullets {
+        bullet_set.insert(Box::into_raw(bullet).into());
+    }
     *bw::first_active_bullet = bullet_from_id(globals.first_bullet, &pointers)?;
     *bw::last_active_bullet = bullet_from_id(globals.last_bullet, &pointers)?;
     Ok(())

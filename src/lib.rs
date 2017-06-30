@@ -16,11 +16,15 @@ extern crate flate2;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 extern crate winapi;
+extern crate thread_local;
+
+#[macro_use] mod macros;
 
 mod bullets;
 mod bw;
 mod entity_serialize;
 pub mod mpqdraft;
+mod send_pointer;
 
 fn init() {
     let _ = fern::Dispatch::new()
