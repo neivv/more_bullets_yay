@@ -1,6 +1,59 @@
 use libc::c_void;
 
-pub struct Image;
+pub struct GrpSprite;
+
+#[repr(C, packed)]
+pub struct RemapPalette {
+    pub id: u32,
+    pub data: *const u8,
+    pub name: [u8; 0xc],
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[repr(C, packed)]
+pub struct Iscript {
+    pub header: u16,
+    pub pos: u16,
+    pub return_pos: u16,
+    pub animation_id: u8,
+    pub wait: u8,
+}
+
+#[repr(C, packed)]
+pub struct Image {
+    pub prev: *mut Image,
+    pub next: *mut Image,
+    pub image_id: u16,
+    pub drawfunc: u8,
+    pub direction: u8,
+    pub flags: u16,
+    pub x_offset: i8,
+    pub y_offset: i8,
+    pub iscript: Iscript,
+    pub frameset: u16,
+    pub frame: u16,
+    pub map_position: Point,
+    pub screen_position: [i16; 2],
+    pub grp_bounds: [i16; 4],
+    pub grp: *mut GrpSprite,
+    pub drawfunc_param: *mut c_void,
+    pub draw: unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void),
+    pub step_frame: unsafe extern "fastcall" fn(*mut Image),
+    pub parent: *mut Sprite,
+}
+
+#[repr(C, packed)]
+pub struct ImageDraw {
+    pub id: u32,
+    pub normal: unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void),
+    pub flipped: unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void),
+}
+
+#[repr(C, packed)]
+pub struct ImageStepFrame {
+    pub id: u32,
+    pub func: unsafe extern "fastcall" fn(*mut Image),
+}
 
 #[repr(C, packed)]
 pub struct Sprite {
@@ -10,7 +63,7 @@ pub struct Sprite {
     pub player: u8,
     pub selection_index: u8,
     pub visibility_mask: u8,
-    pub elevation_level: u8,
+    pub elevation: u8,
     pub flags: u8,
     pub selection_flash_timer: u8,
     pub index: u16,
@@ -20,22 +73,42 @@ pub struct Sprite {
     pub main_image: *mut Image,
     pub first_overlay: *mut Image,
     pub last_overlay: *mut Image,
+    pub extra: SpriteExtension,
 }
 
-pub struct Order;
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SpriteExtension {
+    pub spawn_order: u64,
+}
+
+pub struct Order {
+    pub data: [u8; 0x14],
+}
+
+pub struct Path {
+    pub data: [u8; 0x80],
+}
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
 #[repr(C, packed)]
 pub struct Point {
-    x: i16,
-    y: i16,
+    pub x: i16,
+    pub y: i16,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
 #[repr(C, packed)]
 pub struct Point32 {
-    x: i32,
-    y: i32,
+    pub x: i32,
+    pub y: i32,
+}
+
+#[repr(C, packed)]
+pub struct LoneSprite {
+    pub prev: *mut LoneSprite,
+    pub next: *mut LoneSprite,
+    pub value: u32,
+    pub sprite: *mut Sprite,
 }
 
 #[repr(C, packed)]
@@ -148,12 +221,61 @@ pub struct Unit {
     pub next_invisible: *mut Unit,
     pub prev_invisible: *mut Unit,
     pub rally_pylon: [u8; 8],
-    pub path: *mut c_void,
+    pub path: *mut Path,
     pub path_frame: u8,
     pub pathing_flags: u8,
     pub _unk106: u8,
     pub _unk107: u8,
     pub collision_points: [u16; 0x4],
+    pub spells: UnitSpells,
+    pub bullet_spread_seed: u16,
+    pub _padding132: [u8; 2],
+    pub ai: *mut UnitAi,
+    pub air_strength: u16,
+    pub ground_strength: u16,
+    pub pos_search_left: u32,
+    pub pos_search_right: u32,
+    pub pos_search_top: u32,
+    pub pos_search_bottom: u32,
+    pub repulse: Repulse,
+}
+
+#[repr(C, packed)]
+pub struct UnitAi {
+    pub next: *mut UnitAi,
+    pub prev: *mut UnitAi,
+    pub ty: u8,
+}
+
+#[repr(C, packed)]
+pub struct GuardAi {
+    pub data: [u8; 0x20],
+}
+
+#[repr(C, packed)]
+pub struct WorkerAi {
+    pub data: [u8; 0x18],
+}
+
+#[repr(C, packed)]
+pub struct BuildingAi {
+    pub data: [u8; 0x2c],
+}
+
+#[repr(C, packed)]
+pub struct MilitaryAi {
+    pub data: [u8; 0x14],
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Repulse {
+    pub repulse_misc: u8,
+    pub repulse_direction: u8,
+    pub repulse_chunk_x: u8,
+    pub repulse_chunk_y: u8,
+}
+
+pub struct UnitSpells {
     pub death_timer: u16,
     pub defensive_matrix_dmg: u16,
     pub matrix_timer: u8,
@@ -173,7 +295,6 @@ pub struct Unit {
     pub _unk125: u8,
     pub acid_spore_count: u8,
     pub acid_spore_timers: [u8; 0x9],
-    pub _dc130: [u8; 0x20],
 }
 
 #[cfg(test)]
@@ -184,6 +305,11 @@ mod test {
         use std::mem;
         assert_eq!(mem::size_of::<Unit>(), 0x150);
         assert_eq!(mem::size_of::<Bullet>(), 0x70);
-        assert_eq!(mem::size_of::<Sprite>(), 0x24);
+        assert_eq!(mem::size_of::<Sprite>() - mem::size_of::<SpriteExtension>(), 0x24);
+        assert_eq!(mem::size_of::<Image>(), 0x40);
+        assert_eq!(mem::size_of::<RemapPalette>(), 0x14);
+        assert_eq!(mem::size_of::<Order>(), 0x14);
+        assert_eq!(mem::size_of::<Path>(), 0x80);
+        assert_eq!(mem::size_of::<LoneSprite>(), 0x10);
     }
 }

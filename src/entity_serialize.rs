@@ -1,16 +1,24 @@
-use std::collections::HashMap;
-use std::mem;
-use std::ptr::null_mut;
-
 use bw;
-use bullets::{bullet_to_id, bullet_from_id, LoadError, SaveError};
+use save::{LoadError, SaveError};
+use sprites;
+use units;
+
+pub trait SaveEntityPointer {
+    type Pointer;
+    fn pointer_to_id(&self, pointer: *mut Self::Pointer) -> Result<u32, SaveError>;
+}
+
+pub trait LoadEntityPointer {
+    type Pointer;
+    fn id_to_pointer(&self, id: u32) -> Result<*mut Self::Pointer, LoadError>;
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct EntitySerializable {
     prev: u32,
     next: u32,
     hitpoints: i32,
-    sprite: u16,
+    sprite: u32,
     move_target: bw::Point,
     move_target_unit: u16,
     next_move_waypoint: bw::Point,
@@ -46,9 +54,9 @@ pub struct EntitySerializable {
     target: u16,
 }
 
-pub unsafe fn entity_serializable(
+pub unsafe fn entity_serializable<C: SaveEntityPointer>(
     entity: *const bw::Entity,
-    mapping: &HashMap<*mut bw::Bullet, u32>
+    save_pointer: &C,
 ) -> Result<EntitySerializable, SaveError> {
     let bw::Entity {
         prev,
@@ -90,12 +98,12 @@ pub unsafe fn entity_serializable(
         target,
     } = *entity;
     Ok(EntitySerializable {
-        prev: bullet_to_id(prev as *mut bw::Bullet, mapping)?,
-        next: bullet_to_id(next as *mut bw::Bullet, mapping)?,
+        prev: save_pointer.pointer_to_id(prev as *mut C::Pointer)?,
+        next: save_pointer.pointer_to_id(next as *mut C::Pointer)?,
         hitpoints,
-        sprite: sprite_to_id(sprite),
+        sprite: sprites::sprite_to_id_current_mapping(sprite)?,
         move_target,
-        move_target_unit: unit_to_id(move_target_unit),
+        move_target_unit: units::unit_to_id(move_target_unit),
         next_move_waypoint,
         unk_move_waypoint,
         flingy_flags,
@@ -126,13 +134,13 @@ pub unsafe fn entity_serializable(
         air_cooldown,
         spell_cooldown,
         order_target_pos,
-        target: unit_to_id(target),
+        target: units::unit_to_id(target),
     })
 }
 
-pub fn deserialize_entity(
+pub fn deserialize_entity<C: LoadEntityPointer>(
     entity: &EntitySerializable,
-    mapping: &[*mut bw::Bullet],
+    load_pointer: &C,
 ) -> Result<bw::Entity, LoadError> {
     let EntitySerializable {
         prev,
@@ -174,12 +182,12 @@ pub fn deserialize_entity(
         target,
     } = *entity;
     Ok(bw::Entity {
-        prev: bullet_from_id(prev, mapping)? as *mut bw::Entity,
-        next: bullet_from_id(next, mapping)? as *mut bw::Entity,
+        prev: load_pointer.id_to_pointer(prev)? as *mut bw::Entity,
+        next: load_pointer.id_to_pointer(next)? as *mut bw::Entity,
         hitpoints,
-        sprite: sprite_from_id(sprite)?,
+        sprite: sprites::sprite_from_id_current_mapping(sprite)?,
         move_target,
-        move_target_unit: unit_from_id(move_target_unit)?,
+        move_target_unit: units::unit_from_id(move_target_unit)?,
         next_move_waypoint,
         unk_move_waypoint,
         flingy_flags,
@@ -210,52 +218,6 @@ pub fn deserialize_entity(
         air_cooldown,
         spell_cooldown,
         order_target_pos,
-        target: unit_from_id(target)?,
+        target: units::unit_from_id(target)?,
     })
-}
-
-pub fn unit_to_id(val: *mut bw::Unit) -> u16 {
-    unsafe {
-        if val == null_mut() {
-            0
-        } else {
-            let ptr: *mut bw::Unit = &mut bw::units[0];
-            let val = (val as usize - ptr as usize) / mem::size_of::<bw::Unit>();
-            assert!(val < 1700);
-            val as u16 + 1
-        }
-    }
-}
-
-pub fn unit_from_id(val: u16) -> Result<*mut bw::Unit, LoadError> {
-    if val == 0 {
-        Ok(null_mut())
-    } else if val <= 1700 {
-        unsafe { Ok(&mut bw::units[val as usize - 1]) }
-    } else {
-        Err(LoadError::Corrupted(format!("Invalid unit id 0x{:x}", val)))
-    }
-}
-
-pub fn sprite_to_id(val: *mut bw::Sprite) -> u16 {
-    unsafe {
-        if val == null_mut() {
-            0
-        } else {
-            let ptr: *mut bw::Sprite = &mut bw::sprites[0];
-            let val = (val as usize - ptr as usize) / mem::size_of::<bw::Sprite>();
-            assert!(val < 2500);
-            val as u16 + 1
-        }
-    }
-}
-
-pub fn sprite_from_id(val: u16) -> Result<*mut bw::Sprite, LoadError> {
-    if val == 0 {
-        Ok(null_mut())
-    } else if val <= 2500 {
-        unsafe { Ok(&mut bw::sprites[val as usize - 1]) }
-    } else {
-        Err(LoadError::Corrupted(format!("Invalid sprite id 0x{:x}", val)))
-    }
 }

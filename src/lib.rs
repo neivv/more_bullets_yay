@@ -19,12 +19,15 @@ extern crate winapi;
 extern crate thread_local;
 
 #[macro_use] mod macros;
+pub mod mpqdraft;
 
 mod bullets;
 mod bw;
 mod entity_serialize;
-pub mod mpqdraft;
+mod save;
 mod send_pointer;
+mod sprites;
+mod units;
 
 fn init() {
     let _ = fern::Dispatch::new()
@@ -76,6 +79,30 @@ pub fn patch() {
         exe.hook_opt(bw::DeleteBullet, bullets::delete_bullet);
         exe.hook(bw::SaveBulletChunk, bullets::save_bullet_chunk);
         exe.hook(bw::LoadBulletChunk, bullets::load_bullet_chunk);
+
+        exe.hook_opt(bw::CreateSprite, sprites::create_sprite);
+        exe.hook_opt(bw::DeleteSprite, sprites::delete_sprite);
+        exe.hook(bw::AddToDrawnSpriteHeap, sprites::add_to_drawn_sprites);
+        exe.hook(bw::DrawSprites, sprites::draw_sprites);
+        exe.hook_opt(bw::RedrawScreen, sprites::redraw_screen_hook);
+        exe.hook_opt(bw::GetEmptyImage, sprites::create_image);
+        exe.hook_opt(bw::DeleteImage, sprites::delete_image);
+        exe.hook(bw::SaveSpriteChunk, sprites::save_sprite_chunk);
+        exe.hook(bw::LoadSpriteChunk, sprites::load_sprite_chunk);
+        // Images are saved with their sprites now.
+        exe.hook_closure(bw::SaveImageChunk, |_, _: &Fn(_) -> _| 1);
+        exe.hook_closure(bw::LoadImageChunk, |_, _: &Fn(_) -> _| 1);
+        exe.hook_closure(bw::SaveLoneSpriteChunk, |_, _, _, _: &Fn(_, _, _) -> _| 1);
+        exe.hook_closure(bw::LoadNonFlingySpriteChunk, |_, _: &Fn(_) -> _| 1);
+        exe.hook_opt(bw::CreateLoneSprite, sprites::create_lone);
+        exe.hook_opt(bw::CreateFowSprite, sprites::create_fow);
+        exe.hook_opt(bw::StepLoneSpriteFrame, sprites::step_lone_frame);
+        exe.hook_opt(bw::StepFowSpriteFrame, sprites::step_fow_frame);
+
+        exe.hook(bw::SaveUnitChunk, units::save_unit_chunk);
+        exe.hook(bw::LoadUnitChunk, units::load_unit_chunk);
+
         exe.call_hook(bw::GameEnd, bullets::delete_all);
+        exe.call_hook(bw::GameEnd, sprites::delete_all);
     }
 }

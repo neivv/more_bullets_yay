@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::io;
 use std::mem;
 use std::ptr::null_mut;
 
@@ -9,8 +8,10 @@ use flate2;
 use libc::c_void;
 
 use bw;
-use entity_serialize::{deserialize_entity, entity_serializable, EntitySerializable, unit_to_id,
-    unit_from_id};
+use entity_serialize::{self, deserialize_entity, entity_serializable, EntitySerializable};
+use units::{unit_to_id, unit_from_id};
+use save::{fread, fwrite, fread_num, fwrite_num, SaveError, LoadError, print_text};
+use save::{SaveMapping, LoadMapping};
 use send_pointer::SendPtr;
 
 ome2_thread_local! {
@@ -21,6 +22,20 @@ ome2_thread_local! {
 const BULLET_SAVE_MAGIC: u16 = 0xffed;
 // 8 megabytes, should be more than enough, both compressed and without.
 const BULLET_SAVE_MAX_SIZE: u32 = 0x800000;
+
+impl entity_serialize::SaveEntityPointer for SaveMapping<bw::Bullet> {
+    type Pointer = bw::Bullet;
+    fn pointer_to_id(&self, val: *mut bw::Bullet) -> Result<u32, SaveError> {
+        self.id(val)
+    }
+}
+
+impl entity_serialize::LoadEntityPointer for LoadMapping<bw::Bullet> {
+    type Pointer = bw::Bullet;
+    fn id_to_pointer(&self, val: u32) -> Result<*mut bw::Bullet, LoadError> {
+        self.pointer(val)
+    }
+}
 
 pub unsafe fn create_bullet(
     parent: *mut bw::Unit,
@@ -86,54 +101,6 @@ pub unsafe fn delete_all() {
     *bw::last_free_bullet = null_mut();
 }
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum SaveError {
-        BwIo {
-            display("Broodwar I/O error")
-        }
-        Serialize(err: bincode::Error) {
-            display("Serialization error: {}", err)
-            from()
-        }
-        Io(err: io::Error) {
-            display("I/O error: {}", err)
-            from()
-        }
-        SizeLimit(amt: u64) {
-            display("Too large chunk: {}", amt)
-        }
-        InvalidBulletPointer {
-            display("Internal error: Invalid bullet pointer")
-        }
-    }
-}
-
-quick_error! {
-    #[derive(Debug)]
-    pub enum LoadError {
-        BwIo {
-            display("Broodwar I/O error")
-        }
-        Serialize(err: bincode::Error) {
-            display("Deserialization error: {}", err)
-            from()
-        }
-        SizeLimit {
-            display("Too large chunk")
-        }
-        WrongMagic(m: u16) {
-            display("Incorrect magic: 0x{:x}", m)
-        }
-        Version(ver: u32) {
-            display("Unsupported (newer?) version {}", ver)
-        }
-        Corrupted(info: String) {
-            display("Invalid save data ({})", info)
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 struct SaveGlobals {
     first_bullet: u32,
@@ -153,12 +120,6 @@ struct BulletSerializable {
     spread_seed: u8,
 }
 
-unsafe fn print_text(msg: &str) {
-    let mut buf: Vec<u8> = msg.as_bytes().into();
-    buf.push(0);
-    bw::print_text(buf.as_ptr(), 0, 8);
-}
-
 pub unsafe fn save_bullet_chunk(file: *mut c_void) -> u32 {
     if let Err(e) = save_bullets(file) {
         error!("Couldn't save bullets: {}", e);
@@ -171,53 +132,10 @@ pub unsafe fn save_bullet_chunk(file: *mut c_void) -> u32 {
 unsafe fn save_bullets(file: *mut c_void) -> Result<(), SaveError> {
     let data = serialize_bullets()?;
     fwrite_num(file, BULLET_SAVE_MAGIC)?;
-    fwrite_num(file, 0u32)?;
+    fwrite_num(file, 1u32)?;
     fwrite_num(file, data.len() as u32)?;
     fwrite(file, &data)?;
     Ok(())
-}
-
-unsafe fn fwrite_num<T>(file: *mut c_void, value: T) -> Result<(), SaveError> {
-    let amount =
-        bw::fwrite(&value as *const T as *const c_void, mem::size_of::<T>() as u32, 1, file);
-    if amount != 1 {
-        Err(SaveError::BwIo)
-    } else {
-        Ok(())
-    }
-}
-
-unsafe fn fwrite(file: *mut c_void, buf: &[u8]) -> Result<(), SaveError> {
-    let amount = bw::fwrite(buf.as_ptr() as *const c_void, buf.len() as u32, 1, file);
-    if amount != 1 {
-        Err(SaveError::BwIo)
-    } else {
-        Ok(())
-    }
-}
-
-pub fn bullet_to_id(
-    bullet: *mut bw::Bullet,
-    mapping: &HashMap<*mut bw::Bullet, u32>
-) -> Result<u32, SaveError> {
-    if bullet == null_mut() {
-        Ok(0)
-    } else {
-        mapping.get(&bullet).cloned().ok_or(SaveError::InvalidBulletPointer)
-    }
-}
-
-pub fn bullet_from_id(
-    id: u32,
-    mapping: &[*mut bw::Bullet]
-) -> Result<*mut bw::Bullet, LoadError> {
-    if id == 0 {
-        Ok(null_mut())
-    } else {
-        mapping.get(id as usize - 1).cloned().ok_or_else(|| {
-            LoadError::Corrupted(format!("Invalid bullet id 0x{:x}", id))
-        })
-    }
 }
 
 unsafe fn serialize_bullets() -> Result<Vec<u8>, SaveError> {
@@ -227,8 +145,8 @@ unsafe fn serialize_bullets() -> Result<Vec<u8>, SaveError> {
 
     let size_limit = bincode::Bounded(BULLET_SAVE_MAX_SIZE as u64);
     let globals = SaveGlobals {
-        first_bullet: bullet_to_id(*bw::first_active_bullet, &ptr_to_id_map)?,
-        last_bullet: bullet_to_id(*bw::last_active_bullet, &ptr_to_id_map)?,
+        first_bullet: ptr_to_id_map.id(*bw::first_active_bullet)?,
+        last_bullet: ptr_to_id_map.id(*bw::last_active_bullet)?,
         bullet_count: ptr_to_id_map.len() as u32,
     };
     bincode::serialize_into(&mut writer, &globals, size_limit)?;
@@ -247,7 +165,7 @@ unsafe fn serialize_bullets() -> Result<Vec<u8>, SaveError> {
 
 unsafe fn bullet_serializable(
     bullet: *const bw::Bullet,
-    mapping: &HashMap<*mut bw::Bullet, u32>,
+    mapping: &SaveMapping<bw::Bullet>,
 ) -> Result<BulletSerializable, SaveError> {
     let bw::Bullet {
         ref entity,
@@ -274,7 +192,7 @@ unsafe fn bullet_serializable(
 
 fn deserialize_bullet(
     bullet: &BulletSerializable,
-    mapping: &[*mut bw::Bullet],
+    mapping: &LoadMapping<bw::Bullet>,
 ) -> Result<bw::Bullet, LoadError> {
     let BulletSerializable {
         ref entity,
@@ -299,17 +217,17 @@ fn deserialize_bullet(
     })
 }
 
-unsafe fn bullet_pointer_to_id_map() -> HashMap<*mut bw::Bullet, u32> {
+unsafe fn bullet_pointer_to_id_map() -> SaveMapping<bw::Bullet> {
     let mut id = 1;
     let mut bullet = *bw::first_active_bullet;
     let mut ret = HashMap::new();
     while bullet != null_mut() {
-        let old = ret.insert(bullet, id);
+        let old = ret.insert(bullet.into(), id);
         assert!(old.is_none());
         bullet = (*bullet).entity.next as *mut bw::Bullet;
         id += 1;
     }
-    ret
+    SaveMapping(ret)
 }
 
 pub unsafe fn load_bullet_chunk(file: *mut c_void, save_version: u32) -> u32 {
@@ -330,7 +248,7 @@ unsafe fn load_bullets(file: *mut c_void) -> Result<(), LoadError> {
         return Err(LoadError::WrongMagic(magic));
     }
     let version = fread_num::<u32>(file)?;
-    if version != 0 {
+    if version != 1 {
         return Err(LoadError::Version(version));
     }
     let size = fread_num::<u32>(file)?;
@@ -343,10 +261,10 @@ unsafe fn load_bullets(file: *mut c_void) -> Result<(), LoadError> {
 
     let size_limit = bincode::Bounded(BULLET_SAVE_MAX_SIZE as u64);
     let globals: SaveGlobals = bincode::deserialize_from(&mut reader, size_limit)?;
-    let (mut bullets, pointers) = allocate_bullets(globals.bullet_count);
+    let (mut bullets, mapping) = allocate_bullets(globals.bullet_count);
     for bullet in &mut bullets {
         let serialized = bincode::deserialize_from(&mut reader, size_limit)?;
-        **bullet = deserialize_bullet(&serialized, &pointers)?;
+        **bullet = deserialize_bullet(&serialized, &mapping)?;
         if reader.total_out() > BULLET_SAVE_MAX_SIZE as u64 {
             return Err(LoadError::SizeLimit)
         }
@@ -355,36 +273,15 @@ unsafe fn load_bullets(file: *mut c_void) -> Result<(), LoadError> {
     for bullet in bullets {
         bullet_set.insert(Box::into_raw(bullet).into());
     }
-    *bw::first_active_bullet = bullet_from_id(globals.first_bullet, &pointers)?;
-    *bw::last_active_bullet = bullet_from_id(globals.last_bullet, &pointers)?;
+    *bw::first_active_bullet = mapping.pointer(globals.first_bullet)?;
+    *bw::last_active_bullet = mapping.pointer(globals.last_bullet)?;
     Ok(())
-}
-
-unsafe fn fread_num<T>(file: *mut c_void) -> Result<T, LoadError> {
-    let mut val: T = mem::uninitialized();
-    let ok = bw::fread(&mut val as *mut T as *mut c_void, mem::size_of::<T>() as u32, 1, file);
-    if ok != 1 {
-        Err(LoadError::BwIo)
-    } else {
-        Ok(val)
-    }
-}
-
-unsafe fn fread(file: *mut c_void, size: u32) -> Result<Vec<u8>, LoadError> {
-    let mut buf = Vec::with_capacity(size as usize);
-    let ok = bw::fread(buf.as_mut_ptr() as *mut c_void, size, 1, file);
-    if ok != 1 {
-        Err(LoadError::BwIo)
-    } else {
-        buf.set_len(size as usize);
-        Ok(buf)
-    }
 }
 
 // Returning the pointer vector isn't really necessary, just simpler. Could also create a
 // vector abstraction that allows reading addresses of any Bullet while holding a &mut reference
 // to one of them.
-fn allocate_bullets(count: u32) -> (Vec<Box<bw::Bullet>>, Vec<*mut bw::Bullet>) {
+fn allocate_bullets(count: u32) -> (Vec<Box<bw::Bullet>>, LoadMapping<bw::Bullet>) {
     (0..count).map(|_| {
         let mut bullet = Box::new(unsafe { mem::zeroed() });
         let pointer: *mut bw::Bullet = &mut *bullet;
