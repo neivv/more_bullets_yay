@@ -268,6 +268,7 @@ pub struct MilitaryAi {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[repr(C, packed)]
 pub struct Repulse {
     pub repulse_misc: u8,
     pub repulse_direction: u8,
@@ -275,6 +276,7 @@ pub struct Repulse {
     pub repulse_chunk_y: u8,
 }
 
+#[repr(C, packed)]
 pub struct UnitSpells {
     pub death_timer: u16,
     pub defensive_matrix_dmg: u16,
