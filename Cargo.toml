@@ -1,6 +1,6 @@
 [package]
 name = "more_bullets_yay"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]

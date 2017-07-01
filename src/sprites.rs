@@ -90,6 +90,50 @@ struct LoneSpriteSerializable {
     value: u32,
 }
 
+unsafe fn refill_sprite_image_list() {
+    let mut sprites = all_sprites().borrow_mut();
+    if sprites.len() == 0 {
+        // Init
+        *bw::first_free_sprite = null_mut();
+        *bw::last_free_sprite = null_mut();
+        *bw::first_free_image = null_mut();
+        *bw::last_free_image = null_mut();
+    }
+    let sprite_count = BwLinkedListIter(*bw::first_free_sprite).count();
+    if sprite_count < 500 {
+        for _ in 0..(500 - sprite_count) {
+            let sprite = Box::new(bw::Sprite {
+                next: *bw::first_free_sprite,
+                ..mem::zeroed()
+            });
+            let sprite = Box::into_raw(sprite);
+            if *bw::first_free_sprite != null_mut() {
+                (**bw::first_free_sprite).prev = sprite;
+            } else {
+                *bw::last_free_sprite = sprite;
+            }
+            *bw::first_free_sprite = sprite;
+            sprites.insert(sprite.into());
+        }
+    }
+    let image_count = BwLinkedListIter(*bw::first_free_image).count();
+    if image_count < 1500 {
+        for _ in 0..(1500 - image_count) {
+            let image = Box::new(bw::Image {
+                next: *bw::first_free_image,
+                ..mem::zeroed()
+            });
+            let image = Box::into_raw(image);
+            if *bw::first_free_image != null_mut() {
+                (**bw::first_free_image).prev = image;
+            } else {
+                *bw::last_free_image = image;
+            }
+            *bw::first_free_image = image;
+        }
+    }
+}
+
 pub unsafe fn create_sprite(
     sprite_id: u32,
     x: u32,
@@ -97,34 +141,13 @@ pub unsafe fn create_sprite(
     player: u32,
     orig: &Fn(u32, u32, u32, u32) -> *mut bw::Sprite,
 ) -> *mut bw::Sprite {
-    let sprite = Box::new(bw::Sprite {
-        ..mem::zeroed()
-    });
-    let sprite = Box::into_raw(sprite);
-    *bw::first_free_sprite = sprite;
-    *bw::last_free_sprite = sprite;
+    refill_sprite_image_list();
     let actual_sprite = orig(sprite_id, x, y, player);
-    *bw::first_free_sprite = null_mut();
-    *bw::last_free_sprite = null_mut();
-    if actual_sprite == null_mut() {
-        info!( "Couldn't create sprite {:x} at {:x}.{:x}", sprite_id, x, y);
-        Box::from_raw(sprite);
-        return null_mut();
-    } else if actual_sprite != sprite {
-        error!(
-            "Created a different sprite from what was expected: {:p} {:p}",
-            sprite,
-            actual_sprite,
-        );
-    }
 
     let cell = next_sprite_id();
-    (*sprite).extra.spawn_order = cell.get();
+    (*actual_sprite).extra.spawn_order = cell.get();
     cell.set(cell.get().checked_add(1).unwrap());
-
-    let mut sprites = all_sprites().borrow_mut();
-    sprites.insert(sprite.into());
-    sprite
+    actual_sprite
 }
 
 pub unsafe fn create_lone(
@@ -192,17 +215,7 @@ pub unsafe fn create_fow(
 }
 
 pub unsafe fn delete_sprite(sprite: *mut bw::Sprite, orig: &Fn(*mut bw::Sprite)) {
-    *bw::first_free_sprite = null_mut();
-    *bw::last_free_sprite = null_mut();
     orig(sprite);
-    assert!(*bw::first_free_sprite == sprite);
-    assert!(*bw::last_free_sprite == sprite);
-    *bw::first_free_sprite = null_mut();
-    *bw::last_free_sprite = null_mut();
-
-    Box::from_raw(sprite);
-    let mut sprites = all_sprites().borrow_mut();
-    sprites.remove(&sprite.into());
 }
 
 pub unsafe fn step_lone_frame(sprite: *mut bw::LoneSprite, orig: &Fn(*mut bw::LoneSprite)) {
@@ -232,43 +245,12 @@ pub unsafe fn step_fow_frame(sprite: *mut bw::LoneSprite, orig: &Fn(*mut bw::Lon
 }
 
 pub unsafe fn create_image(orig: &Fn() -> *mut bw::Image) -> *mut bw::Image {
-    let image = Box::new(bw::Image {
-        ..mem::zeroed()
-    });
-    let image = Box::into_raw(image);
-    *bw::first_free_image = image;
-    *bw::last_free_image = image;
-    let actual_image = orig();
-    *bw::first_free_image = null_mut();
-    *bw::last_free_image = null_mut();
-    if actual_image == null_mut() {
-        info!( "Couldn't create image");
-        Box::from_raw(image);
-        return null_mut();
-    } else if actual_image != image {
-        error!(
-            "Created a different image from what was expected: {:p} {:p}",
-            image,
-            actual_image,
-        );
-    }
-    image
+    orig()
 }
 
 pub unsafe fn delete_image(image: *mut bw::Image, orig: &Fn(*mut bw::Image)) {
     gc_images();
-    *bw::first_free_image = null_mut();
-    *bw::last_free_image = null_mut();
     orig(image);
-    assert!(*bw::first_free_image == image);
-    assert!(*bw::last_free_image == image);
-    *bw::first_free_image = null_mut();
-    *bw::last_free_image = null_mut();
-
-    // Cannot immediatly delete the image, as iscript `end` will delete the image and
-    // write the final position to the iscript afterwards
-    let mut images = images_pending_deletion().borrow_mut();
-    images.push(image.into());
 }
 
 fn gc_images() {
@@ -455,19 +437,41 @@ unsafe fn sprite_pointer_to_id_map() -> SaveMapping<bw::Sprite> {
     sprites_in_save_order().enumerate().map(|(x, y)| (y.into(), x as u32 + 1)).collect()
 }
 
-unsafe fn lone_sprites(ptr: *mut bw::LoneSprite) -> LoneSpriteIter {
-    LoneSpriteIter(ptr)
+unsafe fn lone_sprites(ptr: *mut bw::LoneSprite) -> BwLinkedListIter<bw::LoneSprite> {
+    BwLinkedListIter(ptr)
 }
 
-struct LoneSpriteIter(*mut bw::LoneSprite);
+struct BwLinkedListIter<T: BwLinkedListObject>(*mut T);
 
-impl Iterator for LoneSpriteIter {
-    type Item = *mut bw::LoneSprite;
-    fn next(&mut self) -> Option<*mut bw::LoneSprite> {
+trait BwLinkedListObject {
+    unsafe fn next(val: *mut Self) -> *mut Self;
+}
+
+impl BwLinkedListObject for bw::Sprite {
+    unsafe fn next(val: *mut bw::Sprite) -> *mut bw::Sprite {
+        (*val).next
+    }
+}
+
+impl BwLinkedListObject for bw::LoneSprite {
+    unsafe fn next(val: *mut bw::LoneSprite) -> *mut bw::LoneSprite {
+        (*val).next
+    }
+}
+
+impl BwLinkedListObject for bw::Image {
+    unsafe fn next(val: *mut bw::Image) -> *mut bw::Image {
+        (*val).next
+    }
+}
+
+impl<T: BwLinkedListObject> Iterator for BwLinkedListIter<T> {
+    type Item = *mut T;
+    fn next(&mut self) -> Option<*mut T> {
         unsafe {
             let val = self.0;
             if val != null_mut() {
-                self.0 = (*val).next;
+                self.0 = T::next(val);
                 Some(val)
             } else {
                 None
