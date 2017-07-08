@@ -64,7 +64,6 @@ whack_vars!(init_vars, 0x00400000,
     0x0057EB70 => last_free_image: *mut Image;
 
     0x0059CCA8 => units: [Unit; 0x6a4];
-    0x00629D98 => sprites: [Sprite; 0x9c4];
 
     0x0042D517 => sprite_include_in_vision_sync: *mut u8;
     0x0057F1D6 => map_height_tiles: u16;

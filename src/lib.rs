@@ -69,7 +69,7 @@ lazy_static! {
     static ref PATCHER: whack::Patcher = whack::Patcher::new();
 }
 
-pub fn patch() {
+fn patch() {
     unsafe {
         let mut active_patcher = PATCHER.lock().unwrap();
         let mut exe = active_patcher.patch_exe(0x00400000);
