@@ -144,9 +144,11 @@ pub unsafe fn create_sprite(
     refill_sprite_image_list();
     let actual_sprite = orig(sprite_id, x, y, player);
 
-    let cell = next_sprite_id();
-    (*actual_sprite).extra.spawn_order = cell.get();
-    cell.set(cell.get().checked_add(1).unwrap());
+    if actual_sprite != null_mut() {
+        let cell = next_sprite_id();
+        (*actual_sprite).extra.spawn_order = cell.get();
+        cell.set(cell.get().checked_add(1).unwrap());
+    }
     actual_sprite
 }
 
