@@ -377,21 +377,21 @@ unsafe fn serialize_sprites() -> Result<Vec<u8>, SaveError> {
     for sprite in sprites_in_save_order() {
         let serializable = sprite_serializable(sprite, &ptr_to_id_map)?;
         bincode::serialize_into(&mut writer, &serializable, size_limit)?;
-        if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64{
+        if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64 {
             return Err(SaveError::SizeLimit(writer.total_in()));
         }
     }
     for sprite in lone_sprites(*bw::first_active_lone_sprite) {
         let serializable = lone_sprite_serializable(sprite, &ptr_to_id_map)?;
         bincode::serialize_into(&mut writer, &serializable, size_limit)?;
-        if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64{
+        if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64 {
             return Err(SaveError::SizeLimit(writer.total_in()));
         }
     }
     for sprite in lone_sprites(*bw::first_active_fow_sprite) {
         let serializable = lone_sprite_serializable(sprite, &ptr_to_id_map)?;
         bincode::serialize_into(&mut writer, &serializable, size_limit)?;
-        if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64{
+        if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64 {
             return Err(SaveError::SizeLimit(writer.total_in()));
         }
     }
