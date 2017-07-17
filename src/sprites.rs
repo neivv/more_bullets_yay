@@ -421,7 +421,11 @@ impl Iterator for SaveSpritesIter {
         unsafe {
             while self.pos <= *bw::map_height_tiles as usize {
                 if self.sprite == null_mut() {
-                    self.sprite = bw::horizontal_sprite_lines_begin[self.pos];
+                    if self.pos == *bw::map_height_tiles as usize {
+                        self.sprite = null_mut();
+                    } else {
+                        self.sprite = bw::horizontal_sprite_lines_begin[self.pos];
+                    }
                     self.pos += 1;
                 } else {
                     self.sprite = (*self.sprite).next;
