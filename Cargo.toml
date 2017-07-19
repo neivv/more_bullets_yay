@@ -1,6 +1,6 @@
 [package]
 name = "more_bullets_yay"
-version = "0.2.6"
+version = "0.2.7"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
@@ -13,10 +13,11 @@ panic = "abort"
 [profile.release]
 debug = true
 panic = "abort"
+overflow-checks = true
 
 [dependencies]
 bincode = "0.8"
-byteorder = "0.5"
+byteorder = "1.1"
 log = "0.3"
 fern = "0.4"
 flate2 = "0.2"
