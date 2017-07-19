@@ -110,3 +110,8 @@ whack_vars!(init_vars, 0x00400000,
     0x0065487C => last_free_lone_sprite: *mut LoneSprite;
     0x00652918 => cursor_marker: *mut LoneSprite;
 );
+
+pub const TooltipSurfaceHeight: usize = 0x00481359;
+pub const TooltipSurfaceBytes: usize = 0x0048133F;
+pub const TooltipTextSurfaceHeight: usize = 0x0048137C;
+pub const TooltipTextSurfaceBytes: usize = 0x0048136C;

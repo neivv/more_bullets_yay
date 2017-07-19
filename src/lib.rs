@@ -108,5 +108,10 @@ fn patch() {
 
         exe.call_hook(bw::GameEnd, bullets::delete_all);
         exe.call_hook(bw::GameEnd, sprites::delete_all);
+
+        exe.replace_val(bw::TooltipSurfaceBytes, 0xa0u32 * 480);
+        exe.replace_val(bw::TooltipSurfaceHeight, 480u16);
+        exe.replace_val(bw::TooltipTextSurfaceBytes, 0xa0u32 * 480);
+        exe.replace_val(bw::TooltipTextSurfaceHeight, 480u16);
     }
 }

@@ -1,6 +1,6 @@
 [root]
 name = "more_bullets_yay"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "bincode 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bw_dat 0.1.0",
