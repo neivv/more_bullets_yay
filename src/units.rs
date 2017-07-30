@@ -339,7 +339,7 @@ impl RallyPylonSerializable {
             *(ptr.offset(0) as *mut *mut bw::Unit) = unit_from_id(self.val1)?;
             *(ptr.offset(4) as *mut *mut bw::Unit) = unit_from_id(self.val2)?;
         } else {
-            *(ptr.offset(0) as *mut u16) = self.val2;
+            *(ptr.offset(0) as *mut u16) = self.val1;
             *(ptr.offset(2) as *mut u16) = self.val2;
             *(ptr.offset(4) as *mut *mut bw::Unit) = unit_from_id(self.val3)?;
         }
