@@ -872,11 +872,19 @@ unsafe fn deserialize_images(
             grp: grp_from_id(grp)?,
             drawfunc_param: deserialize_drawfunc_param(drawfunc, drawfunc_param)?,
             parent,
-            draw: match flags & 0x2 == 0 {
-                true => bw::image_drawfuncs[drawfunc as usize].normal,
-                false => bw::image_drawfuncs[drawfunc as usize].flipped,
+            draw: {
+                let drawfunc = bw::image_drawfuncs.get(drawfunc as usize)
+                    .unwrap_or_else(|| &bw::image_drawfuncs[0]);
+                match flags & 0x2 == 0 {
+                    true => drawfunc.normal,
+                    false => drawfunc.flipped,
+                }
             },
-            step_frame: bw::image_updatefuncs[drawfunc as usize].func,
+            step_frame: {
+                let func = bw::image_updatefuncs.get(drawfunc as usize)
+                    .unwrap_or_else(|| &bw::image_updatefuncs[0]);
+                func.func
+            }
         });
         if let Some(prev) = result.last_mut() {
             prev.next = &mut *boxed;

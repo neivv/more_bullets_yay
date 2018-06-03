@@ -79,8 +79,8 @@ whack_vars!(init_vars, 0x00400000,
     0x004D6357 => image_count_part2: u32;
     0x0051290C => remap_palettes: [RemapPalette; 0x7];
 
-    0x00512510 => image_updatefuncs: [ImageStepFrame; 0x11];
-    0x005125A0 => image_drawfuncs: [ImageDraw; 0x11];
+    0x00512510 => image_updatefuncs: [ImageStepFrame; 0x12];
+    0x005125A0 => image_drawfuncs: [ImageDraw; 0x12];
 
     0x006283EC => first_hidden_unit: *mut Unit;
     0x00628428 => last_hidden_unit: *mut Unit;

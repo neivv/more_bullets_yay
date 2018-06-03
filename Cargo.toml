@@ -1,6 +1,6 @@
 [package]
 name = "more_bullets_yay"
-version = "0.2.8"
+version = "0.2.9"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 panic = "abort"
 
 [profile.release]
-debug = true
+debug = 1
 panic = "abort"
 overflow-checks = true
 

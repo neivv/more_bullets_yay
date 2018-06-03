@@ -10,7 +10,7 @@ pub struct RemapPalette {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Iscript {
     pub header: u16,
     pub pos: u16,
@@ -90,14 +90,14 @@ pub struct Path {
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Point {
     pub x: i16,
     pub y: i16,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Point32 {
     pub x: i32,
     pub y: i32,
@@ -268,7 +268,7 @@ pub struct MilitaryAi {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Repulse {
     pub repulse_misc: u8,
     pub repulse_direction: u8,
