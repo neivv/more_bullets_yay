@@ -44,7 +44,7 @@ pub unsafe fn create_bullet(
     y: u32,
     player: u32,
     direction: u32,
-    orig: &Fn(*mut bw::Unit, u32, u32, u32, u32, u32) -> *mut bw::Bullet,
+    orig: unsafe extern fn(*mut bw::Unit, u32, u32, u32, u32, u32) -> *mut bw::Bullet,
 ) -> *mut bw::Bullet {
     // Bullet count is only used to limit valkyries, so faking it to be 0 is fine
     *bw::bullet_count = 0;
@@ -76,7 +76,7 @@ pub unsafe fn create_bullet(
     bullet
 }
 
-pub unsafe fn delete_bullet(bullet: *mut bw::Bullet, orig: &Fn(*mut bw::Bullet)) {
+pub unsafe fn delete_bullet(bullet: *mut bw::Bullet, orig: unsafe extern fn(*mut bw::Bullet)) {
     if (*bullet).entity.sprite == null_mut() {
         // Have to call orig to remove the bullet from active bullet list
         *bw::first_free_bullet = null_mut();

@@ -68,12 +68,12 @@ quick_error! {
 }
 
 pub unsafe fn fread_num<T>(file: *mut c_void) -> Result<T, LoadError> {
-    let mut val: T = mem::uninitialized();
-    let ok = bw::fread(&mut val as *mut T as *mut c_void, mem::size_of::<T>() as u32, 1, file);
+    let mut val = mem::MaybeUninit::<T>::uninit();
+    let ok = bw::fread(val.as_mut_ptr() as *mut c_void, mem::size_of::<T>() as u32, 1, file);
     if ok != 1 {
         Err(LoadError::BwIo)
     } else {
-        Ok(val)
+        Ok(val.assume_init())
     }
 }
 

@@ -8,3 +8,4 @@ libc = "0.2"
 
 [dependencies.whack]
 git = "https://github.com/neivv/whack/"
+rev = "ccd95f5cfa37622bc3ec3d4b0974ab9b631b59b2"

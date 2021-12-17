@@ -23,15 +23,15 @@ fern = "0.4"
 flate2 = "0.2"
 chrono = "0.4"
 libc = "0.2"
-lazy_static = "0.2"
+lazy_static = "1.4"
 serde = "1.0"
 serde_derive = "1.0"
 thread_local = "0.3.2"
 quick-error = "1.1.0"
-winapi = "0.2.5"
 
 [dependencies.whack]
 git = "https://github.com/neivv/whack/"
+rev = "ccd95f5cfa37622bc3ec3d4b0974ab9b631b59b2"
 
 [dependencies.bw_dat]
 path = "bw_dat"

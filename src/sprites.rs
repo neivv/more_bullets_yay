@@ -139,7 +139,7 @@ pub unsafe fn create_sprite(
     x: u32,
     y: u32,
     player: u32,
-    orig: &Fn(u32, u32, u32, u32) -> *mut bw::Sprite,
+    orig: unsafe extern fn(u32, u32, u32, u32) -> *mut bw::Sprite,
 ) -> *mut bw::Sprite {
     refill_sprite_image_list();
     let actual_sprite = orig(sprite_id, x, y, player);
@@ -157,7 +157,7 @@ pub unsafe fn create_lone(
     x: u32,
     y: u32,
     player: u32,
-    orig: &Fn(u32, u32, u32, u32) -> *mut bw::LoneSprite,
+    orig: unsafe extern fn(u32, u32, u32, u32) -> *mut bw::LoneSprite,
 ) -> *mut bw::LoneSprite {
     let sprite = Box::new(bw::LoneSprite {
         ..mem::zeroed()
@@ -188,7 +188,7 @@ pub unsafe fn create_lone(
 pub unsafe fn create_fow(
     unit_id: u32,
     base: *mut bw::Sprite,
-    orig: &Fn(u32, *mut bw::Sprite) -> *mut bw::LoneSprite,
+    orig: unsafe extern fn(u32, *mut bw::Sprite) -> *mut bw::LoneSprite,
 ) -> *mut bw::LoneSprite {
     let sprite = Box::new(bw::LoneSprite {
         ..mem::zeroed()
@@ -216,11 +216,14 @@ pub unsafe fn create_fow(
     sprite
 }
 
-pub unsafe fn delete_sprite(sprite: *mut bw::Sprite, orig: &Fn(*mut bw::Sprite)) {
+pub unsafe fn delete_sprite(sprite: *mut bw::Sprite, orig: unsafe extern fn(*mut bw::Sprite)) {
     orig(sprite);
 }
 
-pub unsafe fn step_lone_frame(sprite: *mut bw::LoneSprite, orig: &Fn(*mut bw::LoneSprite)) {
+pub unsafe fn step_lone_frame(
+    sprite: *mut bw::LoneSprite,
+    orig: unsafe extern fn(*mut bw::LoneSprite),
+) {
     *bw::first_free_lone_sprite = null_mut();
     *bw::last_free_lone_sprite = null_mut();
     orig(sprite);
@@ -233,7 +236,10 @@ pub unsafe fn step_lone_frame(sprite: *mut bw::LoneSprite, orig: &Fn(*mut bw::Lo
     *bw::last_free_lone_sprite = null_mut();
 }
 
-pub unsafe fn step_fow_frame(sprite: *mut bw::LoneSprite, orig: &Fn(*mut bw::LoneSprite)) {
+pub unsafe fn step_fow_frame(
+    sprite: *mut bw::LoneSprite,
+    orig: unsafe extern fn(*mut bw::LoneSprite),
+) {
     *bw::first_free_fow_sprite = null_mut();
     *bw::last_free_fow_sprite = null_mut();
     orig(sprite);
@@ -246,11 +252,11 @@ pub unsafe fn step_fow_frame(sprite: *mut bw::LoneSprite, orig: &Fn(*mut bw::Lon
     *bw::last_free_fow_sprite = null_mut();
 }
 
-pub unsafe fn create_image(orig: &Fn() -> *mut bw::Image) -> *mut bw::Image {
+pub unsafe fn create_image(orig: unsafe extern fn() -> *mut bw::Image) -> *mut bw::Image {
     orig()
 }
 
-pub unsafe fn delete_image(image: *mut bw::Image, orig: &Fn(*mut bw::Image)) {
+pub unsafe fn delete_image(image: *mut bw::Image, orig: unsafe extern fn(*mut bw::Image)) {
     gc_images();
     orig(image);
 }
@@ -329,7 +335,7 @@ pub unsafe fn draw_sprites() {
     }
 }
 
-pub unsafe fn redraw_screen_hook(orig: &Fn()) {
+pub unsafe fn redraw_screen_hook(orig: unsafe extern fn()) {
     orig();
     // The buffer may be filled but not used if the screen doesn't need to be redrawn.
     let mut buf = sprite_draw_buffer().borrow_mut();
@@ -533,7 +539,7 @@ unsafe fn sprite_serializable(
         main_image,
         first_overlay,
         last_overlay: _,
-        ref extra,
+        extra,
     } = *sprite;
     let (images, main_image_id) = images_serializable(first_overlay, main_image)?;
     Ok(SpriteSerializable {
@@ -553,7 +559,7 @@ unsafe fn sprite_serializable(
         position,
         images,
         main_image_id,
-        extra: extra.clone(),
+        extra,
     })
 }
 
@@ -578,7 +584,7 @@ unsafe fn images_serializable(
                 flags,
                 x_offset,
                 y_offset,
-                ref iscript,
+                iscript,
                 frameset,
                 frame,
                 map_position,
@@ -600,7 +606,7 @@ unsafe fn images_serializable(
                 flags,
                 x_offset,
                 y_offset,
-                iscript: iscript.clone(),
+                iscript,
                 frameset,
                 frame,
                 map_position,

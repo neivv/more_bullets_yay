@@ -1,7 +1,6 @@
 use std::slice;
 
 use libc::c_void;
-use winapi;
 
 struct Module;
 
@@ -11,7 +10,7 @@ struct Vtable {
     Identify: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, *mut u32) -> u32,
     GetPluginName: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, *mut u8, u32) -> u32,
     CanPatchExecutable: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, *const u8) -> u32,
-    Configure: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, winapi::HWND) -> u32,
+    Configure: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, usize) -> u32,
     ReadyForPatch: unsafe extern "stdcall" fn(*mut MpqdraftPlugin) -> u32,
     GetModules: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, *mut Module, *mut u32) -> u32,
     InitializePlugin: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, *mut c_void) -> u32,
@@ -57,7 +56,7 @@ unsafe extern "stdcall" fn can_patch_executable(_plugin: *mut MpqdraftPlugin, _e
     1
 }
 
-unsafe extern "stdcall" fn configure(_plugin: *mut MpqdraftPlugin, _hwnd: winapi::HWND) -> u32 {
+unsafe extern "stdcall" fn configure(_plugin: *mut MpqdraftPlugin, _hwnd: usize) -> u32 {
     1
 }
 

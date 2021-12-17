@@ -9,7 +9,7 @@ pub struct RemapPalette {
     pub name: [u8; 0xc],
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 #[repr(C)]
 pub struct Iscript {
     pub header: u16,
@@ -37,22 +37,22 @@ pub struct Image {
     pub grp_bounds: [i16; 4],
     pub grp: *mut GrpSprite,
     pub drawfunc_param: *mut c_void,
-    pub draw: unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void),
-    pub step_frame: unsafe extern "fastcall" fn(*mut Image),
+    pub draw: Option<unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void)>,
+    pub step_frame: Option<unsafe extern "fastcall" fn(*mut Image)>,
     pub parent: *mut Sprite,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct ImageDraw {
     pub id: u32,
-    pub normal: unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void),
-    pub flipped: unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void),
+    pub normal: Option<unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void)>,
+    pub flipped: Option<unsafe extern "fastcall" fn(u32, u32, *const c_void, *const u16, *mut c_void)>,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct ImageStepFrame {
     pub id: u32,
-    pub func: unsafe extern "fastcall" fn(*mut Image),
+    pub func: Option<unsafe extern "fastcall" fn(*mut Image)>,
 }
 
 #[repr(C, packed)]
@@ -76,7 +76,7 @@ pub struct Sprite {
     pub extra: SpriteExtension,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct SpriteExtension {
     pub spawn_order: u64,
 }

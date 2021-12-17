@@ -114,6 +114,7 @@ whack_vars!(init_vars, 0x00400000,
 
     0x00581DD6 => player_minimap_color: [u8; 0xc];
     0x00581D76 => player_color_palette: [[u8; 0x8]; 0xc];
+    0x00596904 => scmain_state: u32;
 );
 
 pub const TooltipSurfaceHeight: usize = 0x00481359;

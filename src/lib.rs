@@ -1,5 +1,3 @@
-#![cfg_attr(target_env = "gnu", feature(link_args))]
-#[cfg_attr(target_env = "gnu", link_args = "-static-libgcc")]
 extern {}
 #[macro_use]
 extern crate whack;
@@ -15,7 +13,6 @@ extern crate bincode;
 extern crate flate2;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
-extern crate winapi;
 extern crate thread_local;
 
 extern crate bw_dat as dat;
@@ -32,6 +29,7 @@ mod sprites;
 mod units;
 
 use std::ptr::null_mut;
+use std::sync::Mutex;
 
 fn init() {
     let _ = fern::Dispatch::new()
@@ -68,7 +66,7 @@ pub extern fn Initialize() {
 }
 
 lazy_static! {
-    static ref PATCHER: whack::Patcher = whack::Patcher::new();
+    static ref PATCHER: Mutex<whack::Patcher> = Mutex::new(whack::Patcher::new());
 }
 
 fn patch() {
@@ -98,10 +96,10 @@ fn patch() {
             exe.hook(bw::SaveSpriteChunk, sprites::save_sprite_chunk);
             exe.hook(bw::LoadSpriteChunk, sprites::load_sprite_chunk);
             // Images are saved with their sprites now.
-            exe.hook_closure(bw::SaveImageChunk, |_, _: &Fn(_) -> _| 1);
-            exe.hook_closure(bw::LoadImageChunk, |_, _: &Fn(_) -> _| 1);
-            exe.hook_closure(bw::SaveLoneSpriteChunk, |_, _, _, _: &Fn(_, _, _) -> _| 1);
-            exe.hook_closure(bw::LoadNonFlingySpriteChunk, |_, _: &Fn(_) -> _| 1);
+            exe.hook_closure(bw::SaveImageChunk, |_, _orig| 1);
+            exe.hook_closure(bw::LoadImageChunk, |_, _orig| 1);
+            exe.hook_closure(bw::SaveLoneSpriteChunk, |_, _, _, _orig| 1);
+            exe.hook_closure(bw::LoadNonFlingySpriteChunk, |_, _orig| 1);
             exe.hook_opt(bw::CreateLoneSprite, sprites::create_lone);
             exe.hook_opt(bw::CreateFowSprite, sprites::create_fow);
             exe.hook_opt(bw::StepLoneSpriteFrame, sprites::step_lone_frame);
