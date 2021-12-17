@@ -141,6 +141,11 @@ pub unsafe fn create_sprite(
     player: u32,
     orig: unsafe extern fn(u32, u32, u32, u32) -> *mut bw::Sprite,
 ) -> *mut bw::Sprite {
+    if *bw::scmain_state != 3 {
+        // Lobby minimap preview, since this plugin doesn't reset sprites aren
+        // on game init (only end), but BW does, calling the hook is problematic in lobby.
+        return orig(sprite_id, x, y, player);
+    }
     refill_sprite_image_list();
     let actual_sprite = orig(sprite_id, x, y, player);
 
