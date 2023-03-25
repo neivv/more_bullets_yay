@@ -13,7 +13,14 @@ use save::{SaveMapping, LoadMapping};
 use send_pointer::SendPtr;
 use units::{unit_to_id, unit_from_id};
 
+const SPRITE_LIMIT: usize = 200000;
+const IMAGE_LIMIT: usize = 400000;
+
 ome2_thread_local! {
+    SPRITE_ARRAY: RefCell<RawVec<bw::Sprite>> =
+        sprite_array(RefCell::new(RawVec::with_capacity(SPRITE_LIMIT)));
+    IMAGE_ARRAY: RefCell<RawVec<bw::Image>> =
+        image_array(RefCell::new(RawVec::with_capacity(IMAGE_LIMIT)));
     SPRITES: RefCell<HashSet<SendPtr<bw::Sprite>>> = all_sprites(RefCell::new(HashSet::new()));
     // Both lone and fow
     LONE_SPRITES: RefCell<HashSet<SendPtr<bw::LoneSprite>>> =
@@ -29,8 +36,44 @@ ome2_thread_local! {
         lone_sprite_save_mapping(RefCell::new(SaveMapping::new()));
     LONE_SPRITE_LOAD_MAPPING: RefCell<LoadMapping<bw::LoneSprite>> =
         lone_sprite_load_mapping(RefCell::new(LoadMapping::new()));
-    IMAGES_PENDING_DELETION: RefCell<Vec<SendPtr<bw::Image>>> =
-        images_pending_deletion(RefCell::new(Vec::new()));
+}
+
+struct RawVec<T> {
+    ptr: *mut T,
+    size: usize,
+    capacity: usize,
+}
+
+unsafe impl<T> Send for RawVec<T> {}
+unsafe impl<T> Sync for RawVec<T> {}
+
+impl<T> RawVec<T> {
+    fn with_capacity(cap: usize) -> RawVec<T> {
+        let (ptr, size, capacity) = Vec::with_capacity(cap).into_raw_parts();
+        RawVec {
+            ptr,
+            size,
+            capacity,
+        }
+    }
+
+    fn push(&mut self) -> *mut T {
+        unsafe {
+            if self.size == self.capacity {
+                null_mut()
+            } else {
+                self.size += 1;
+                self.ptr.add(self.size - 1)
+            }
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = *mut T> {
+        unsafe {
+            let ptr = self.ptr;
+            (0..self.size).map(move |x| ptr.add(x))
+        }
+    }
 }
 
 const SPRITE_SAVE_MAGIC: u16 = 0xffee;
@@ -68,6 +111,7 @@ struct SpriteSerializable {
 
 #[derive(Serialize, Deserialize)]
 struct ImageSerializable {
+    offset: usize,
     image_id: u16,
     drawfunc: u8,
     direction: u8,
@@ -90,6 +134,16 @@ struct LoneSpriteSerializable {
     value: u32,
 }
 
+fn allocate_sprite() -> *mut bw::Sprite {
+    let mut sprites = sprite_array().borrow_mut();
+    sprites.push()
+}
+
+fn allocate_image() -> *mut bw::Image {
+    let mut array = image_array().borrow_mut();
+    array.push()
+}
+
 unsafe fn refill_sprite_image_list() {
     let mut sprites = all_sprites().borrow_mut();
     if sprites.len() == 0 {
@@ -102,11 +156,14 @@ unsafe fn refill_sprite_image_list() {
     let sprite_count = BwLinkedListIter(*bw::first_free_sprite).count();
     if sprite_count < 500 {
         for _ in 0..(500 - sprite_count) {
-            let sprite = Box::new(bw::Sprite {
+            let sprite = allocate_sprite();
+            if sprite.is_null() {
+                break;
+            }
+            *sprite = bw::Sprite {
                 next: *bw::first_free_sprite,
                 ..mem::zeroed()
-            });
-            let sprite = Box::into_raw(sprite);
+            };
             if *bw::first_free_sprite != null_mut() {
                 (**bw::first_free_sprite).prev = sprite;
             } else {
@@ -119,11 +176,14 @@ unsafe fn refill_sprite_image_list() {
     let image_count = BwLinkedListIter(*bw::first_free_image).count();
     if image_count < 1500 {
         for _ in 0..(1500 - image_count) {
-            let image = Box::new(bw::Image {
+            let image = allocate_image();
+            if image.is_null() {
+                break;
+            }
+            *image = bw::Image {
                 next: *bw::first_free_image,
                 ..mem::zeroed()
-            });
-            let image = Box::into_raw(image);
+            };
             if *bw::first_free_image != null_mut() {
                 (**bw::first_free_image).prev = image;
             } else {
@@ -151,7 +211,7 @@ pub unsafe fn create_sprite(
 
     if actual_sprite != null_mut() {
         let cell = next_sprite_id();
-        (*actual_sprite).extra.spawn_order = cell.get();
+        (*actual_sprite).extra.spawn_order = (cell.get() as u32, (cell.get() >> 32) as u32);
         cell.set(cell.get().checked_add(1).unwrap());
     }
     actual_sprite
@@ -175,7 +235,7 @@ pub unsafe fn create_lone(
     *bw::last_free_lone_sprite = null_mut();
     if actual_sprite == null_mut() {
         info!( "Couldn't create lone sprite {:x} at {:x}.{:x}", sprite_id, x, y);
-        Box::from_raw(sprite);
+        let _ = Box::from_raw(sprite);
         return null_mut();
     } else if actual_sprite != sprite {
         error!(
@@ -206,7 +266,7 @@ pub unsafe fn create_fow(
     *bw::last_free_fow_sprite = null_mut();
     if actual_sprite == null_mut() {
         info!("Couldn't create fow sprite {:x}", unit_id);
-        Box::from_raw(sprite);
+        let _ = Box::from_raw(sprite);
         return null_mut();
     } else if actual_sprite != sprite {
         error!(
@@ -233,7 +293,7 @@ pub unsafe fn step_lone_frame(
     *bw::last_free_lone_sprite = null_mut();
     orig(sprite);
     if *bw::first_free_lone_sprite == sprite {
-        Box::from_raw(sprite);
+        let _ = Box::from_raw(sprite);
         let mut sprites = all_lone_sprites().borrow_mut();
         sprites.remove(&sprite.into());
     }
@@ -249,7 +309,7 @@ pub unsafe fn step_fow_frame(
     *bw::last_free_fow_sprite = null_mut();
     orig(sprite);
     if *bw::first_free_fow_sprite == sprite {
-        Box::from_raw(sprite);
+        let _ = Box::from_raw(sprite);
         let mut sprites = all_lone_sprites().borrow_mut();
         sprites.remove(&sprite.into());
     }
@@ -262,37 +322,14 @@ pub unsafe fn create_image(orig: unsafe extern fn() -> *mut bw::Image) -> *mut b
 }
 
 pub unsafe fn delete_image(image: *mut bw::Image, orig: unsafe extern fn(*mut bw::Image)) {
-    gc_images();
     orig(image);
-}
-
-fn gc_images() {
-    let mut images = images_pending_deletion().borrow_mut();
-    for &SendPtr(image) in images.iter() {
-        unsafe { Box::from_raw(image); }
-    }
-    images.clear();
 }
 
 pub unsafe fn delete_all() {
     let mut sprites = all_sprites().borrow_mut();
-    for &SendPtr(sprite) in sprites.iter() {
-        let mut image = (*sprite).first_overlay;
-        while image != null_mut() {
-            let next = (*image).next;
-            if !is_selection_image(image) {
-                Box::from_raw(image);
-            }
-            image = next;
-        }
-        Box::from_raw(sprite);
-    }
     sprites.clear();
-    let mut sprites = all_lone_sprites().borrow_mut();
-    for &SendPtr(sprite) in sprites.iter() {
-        Box::from_raw(sprite);
-    }
-    sprites.clear();
+    sprite_array().borrow_mut().size = 0;
+    image_array().borrow_mut().size = 0;
 }
 
 unsafe fn is_selection_image(image: *mut bw::Image) -> bool {
@@ -385,11 +422,14 @@ unsafe fn serialize_sprites() -> Result<Vec<u8>, SaveError> {
         cursor_marker: lone_ptr_to_id_map.id(*bw::cursor_marker)?,
     };
     bincode::serialize_into(&mut writer, &globals, size_limit)?;
-    for sprite in sprites_in_save_order() {
-        let serializable = sprite_serializable(sprite, &ptr_to_id_map)?;
-        bincode::serialize_into(&mut writer, &serializable, size_limit)?;
-        if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64 {
-            return Err(SaveError::SizeLimit(writer.total_in()));
+    {
+        let sprites = sprite_array().borrow_mut();
+        for sprite in sprites.iter() {
+            let serializable = sprite_serializable(sprite, &ptr_to_id_map)?;
+            bincode::serialize_into(&mut writer, &serializable, size_limit)?;
+            if writer.total_in() > SPRITE_SAVE_MAX_SIZE as u64 {
+                return Err(SaveError::SizeLimit(writer.total_in()));
+            }
         }
     }
     for sprite in lone_sprites(*bw::first_active_lone_sprite) {
@@ -414,44 +454,9 @@ unsafe fn serialize_sprites() -> Result<Vec<u8>, SaveError> {
     Ok(writer.finish()?)
 }
 
-unsafe fn sprites_in_save_order() -> SaveSpritesIter {
-    SaveSpritesIter {
-        pos: 0,
-        sprite: null_mut(),
-    }
-}
-
-struct SaveSpritesIter {
-    pos: usize,
-    sprite: *mut bw::Sprite,
-}
-
-impl Iterator for SaveSpritesIter {
-    type Item = *mut bw::Sprite;
-    fn next(&mut self) -> Option<*mut bw::Sprite> {
-        unsafe {
-            while self.pos <= *bw::map_height_tiles as usize {
-                if self.sprite == null_mut() {
-                    if self.pos == *bw::map_height_tiles as usize {
-                        self.sprite = null_mut();
-                    } else {
-                        self.sprite = bw::horizontal_sprite_lines_begin[self.pos];
-                    }
-                    self.pos += 1;
-                } else {
-                    self.sprite = (*self.sprite).next;
-                }
-                if self.sprite != null_mut() {
-                    return Some(self.sprite);
-                }
-            }
-            None
-        }
-    }
-}
-
 unsafe fn sprite_pointer_to_id_map() -> SaveMapping<bw::Sprite> {
-    sprites_in_save_order().enumerate().map(|(x, y)| (y.into(), x as u32 + 1)).collect()
+    let sprites = sprite_array().borrow_mut();
+    sprites.iter().enumerate().map(|(x, y)| (y.into(), x as u32 + 1)).collect()
 }
 
 unsafe fn lone_sprites(ptr: *mut bw::LoneSprite) -> BwLinkedListIter<bw::LoneSprite> {
@@ -604,7 +609,9 @@ unsafe fn images_serializable(
             if image == main_image {
                 main_index = index;
             }
+            let offset = image as usize - image_array().borrow().ptr as usize;
             out.push(ImageSerializable {
+                offset,
                 image_id,
                 drawfunc,
                 direction,
@@ -717,15 +724,15 @@ unsafe fn load_sprites(file: *mut c_void) -> Result<(), LoadError> {
 
     let size_limit = bincode::Bounded(SPRITE_SAVE_MAX_SIZE as u64);
     let globals: SaveGlobals = bincode::deserialize_from(&mut reader, size_limit)?;
-    let (mut sprites, mapping) = allocate_sprites(globals.sprite_count);
+    let mut sprites = sprite_array().borrow_mut();
+    let mut images = image_array().borrow_mut();
+    let mapping = allocate_sprites(&mut sprites, globals.sprite_count);
     let (mut lone_sprites, lone_mapping) =
         allocate_lone_sprites(globals.lone_count + globals.fow_count);
-    let mut image_boxes = Vec::with_capacity(0x1000);
-    for sprite_result in &mut sprites {
+    for sprite_result in sprites.iter() {
         let serialized = bincode::deserialize_from(&mut reader, size_limit)?;
-        let (sprite, images) = deserialize_sprite(&serialized, &mapping, &mut **sprite_result)?;
-        **sprite_result = sprite;
-        image_boxes.extend(images);
+        let sprite = deserialize_sprite(&serialized, &mapping, sprite_result, &mut images)?;
+        *sprite_result = sprite;
         if reader.total_out() > SPRITE_SAVE_MAX_SIZE as u64 {
             return Err(LoadError::SizeLimit)
         }
@@ -749,11 +756,8 @@ unsafe fn load_sprites(file: *mut c_void) -> Result<(), LoadError> {
     }
 
     let mut sprite_set = all_sprites().borrow_mut();
-    for sprite in sprites {
-        sprite_set.insert(Box::into_raw(sprite).into());
-    }
-    for img in image_boxes {
-        Box::into_raw(img);
+    for sprite in sprites.iter() {
+        sprite_set.insert(SendPtr(sprite));
     }
     let mut lone_sprite_set = all_lone_sprites().borrow_mut();
     *bw::first_active_lone_sprite = match globals.lone_count {
@@ -794,7 +798,8 @@ unsafe fn deserialize_sprite(
     sprite: &SpriteSerializable,
     mapping: &LoadMapping<bw::Sprite>,
     pointer: *mut bw::Sprite,
-) -> Result<(bw::Sprite, Vec<Box<bw::Image>>), LoadError> {
+    image_array: &mut RawVec<bw::Image>,
+) -> Result<bw::Sprite, LoadError> {
     let SpriteSerializable {
         prev,
         next,
@@ -813,8 +818,8 @@ unsafe fn deserialize_sprite(
         main_image_id,
         ref extra,
     } = *sprite;
-    let mut image_boxes = deserialize_images(images, pointer)?;
-    Ok((bw::Sprite {
+    let mut image_ptrs = deserialize_images(images, pointer, image_array)?;
+    Ok(bw::Sprite {
         prev: mapping.pointer(prev)?,
         next: mapping.pointer(next)?,
         sprite_id,
@@ -828,28 +833,30 @@ unsafe fn deserialize_sprite(
         width,
         height,
         position,
-        first_overlay: image_boxes.first_mut()
+        first_overlay: image_ptrs.first_mut()
             .map(|x| &mut **x as *mut bw::Image).unwrap_or(null_mut()),
-        last_overlay: image_boxes.last_mut()
+        last_overlay: image_ptrs.last_mut()
             .map(|x| &mut **x as *mut bw::Image).unwrap_or(null_mut()),
         main_image: if main_image_id == 0 {
             null_mut()
         } else {
-            image_boxes.get_mut(main_image_id as usize - 1).map(|x| &mut **x).ok_or_else(|| {
+            image_ptrs.get_mut(main_image_id as usize - 1).map(|x| &mut **x).ok_or_else(|| {
                 LoadError::Corrupted(format!("Invalid main image 0x{:x}", main_image_id))
             })?
         },
         extra: extra.clone(),
-    }, image_boxes))
+    })
 }
 
 unsafe fn deserialize_images(
     images: &[ImageSerializable],
     parent: *mut bw::Sprite,
-) -> Result<Vec<Box<bw::Image>>, LoadError> {
-    let mut result: Vec<Box<bw::Image>> = Vec::with_capacity(images.len());
+    image_array: &mut RawVec<bw::Image>,
+) -> Result<Vec<*mut bw::Image>, LoadError> {
+    let mut result: Vec<*mut bw::Image> = Vec::with_capacity(images.len());
     for img in images {
         let ImageSerializable {
+            offset,
             image_id,
             drawfunc,
             direction,
@@ -865,8 +872,13 @@ unsafe fn deserialize_images(
             grp,
             drawfunc_param,
         } = *img;
-        let mut boxed = Box::new(bw::Image {
-            prev: result.last_mut().map(|x| &mut **x as *mut bw::Image).unwrap_or(null_mut()),
+        let ptr = (image_array.ptr as usize + offset) as *mut bw::Image;
+        let index = offset / mem::size_of::<bw::Image>();
+        if index >= image_array.size {
+            image_array.size = index + 1;
+        }
+        *ptr = bw::Image {
+            prev: result.last().copied().unwrap_or(null_mut()),
             next: null_mut(),
             image_id,
             drawfunc,
@@ -896,11 +908,11 @@ unsafe fn deserialize_images(
                     .unwrap_or_else(|| &bw::image_updatefuncs[0]);
                 func.func
             }
-        });
-        if let Some(prev) = result.last_mut() {
-            prev.next = &mut *boxed;
+        };
+        if let Some(prev) = result.last() {
+            (**prev).next = ptr;
         }
-        result.push(boxed);
+        result.push(ptr);
     }
     Ok(result)
 }
@@ -920,12 +932,11 @@ unsafe fn deserialize_lone_sprite(
 // Returning the pointer vector isn't really necessary, just simpler. Could also create a
 // vector abstraction that allows reading addresses of any Bullet while holding a &mut reference
 // to one of them.
-fn allocate_sprites(count: u32) -> (Vec<Box<bw::Sprite>>, LoadMapping<bw::Sprite>) {
-    (0..count).map(|_| {
-        let mut sprite = Box::new(unsafe { mem::zeroed() });
-        let pointer: *mut bw::Sprite = &mut *sprite;
-        (sprite, pointer)
-    }).unzip()
+fn allocate_sprites(sprites: &mut RawVec<bw::Sprite>, count: u32) -> LoadMapping<bw::Sprite> {
+    sprites.size = count as usize;
+    LoadMapping((0..count).map(|i| {
+        unsafe { SendPtr(sprites.ptr.add(i as usize)) }
+    }).collect())
 }
 
 fn allocate_lone_sprites(count: u32) -> (Vec<Box<bw::LoneSprite>>, LoadMapping<bw::LoneSprite>) {

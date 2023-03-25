@@ -62,7 +62,7 @@ pub unsafe fn create_bullet(
         info!(
             "Couldn't create bullet {:x} at {:x}.{:x} facing {:x}", bullet_id, x, y, direction
         );
-        Box::from_raw(bullet);
+        let _ = Box::from_raw(bullet);
         return null_mut();
     } else if actual_bullet != bullet {
         error!(
@@ -82,7 +82,7 @@ pub unsafe fn delete_bullet(bullet: *mut bw::Bullet, orig: unsafe extern fn(*mut
         *bw::first_free_bullet = null_mut();
         *bw::last_free_bullet = null_mut();
         orig(bullet);
-        Box::from_raw(bullet);
+        let _ = Box::from_raw(bullet);
         let mut bullets = all_bullets().borrow_mut();
         bullets.remove(&bullet.into());
     }
@@ -91,7 +91,7 @@ pub unsafe fn delete_bullet(bullet: *mut bw::Bullet, orig: unsafe extern fn(*mut
 pub unsafe fn delete_all() {
     let mut bullets = all_bullets().borrow_mut();
     for bullet in bullets.iter() {
-        Box::from_raw(**bullet);
+        let _ = Box::from_raw(**bullet);
     }
     bullets.clear();
     // Not sure if these are necessary, but doing this won't hurt either

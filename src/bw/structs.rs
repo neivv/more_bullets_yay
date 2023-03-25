@@ -55,7 +55,7 @@ pub struct ImageStepFrame {
     pub func: Option<unsafe extern "fastcall" fn(*mut Image)>,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Sprite {
     pub prev: *mut Sprite,
     pub next: *mut Sprite,
@@ -78,7 +78,7 @@ pub struct Sprite {
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct SpriteExtension {
-    pub spawn_order: u64,
+    pub spawn_order: (u32, u32),
 }
 
 pub struct Order {
