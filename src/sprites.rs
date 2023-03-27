@@ -759,6 +759,11 @@ unsafe fn load_sprites(file: *mut c_void) -> Result<(), LoadError> {
     for sprite in sprites.iter() {
         sprite_set.insert(SendPtr(sprite));
     }
+    *bw::first_free_sprite = null_mut();
+    *bw::last_free_sprite = null_mut();
+    *bw::first_free_image = null_mut();
+    *bw::last_free_image = null_mut();
+
     let mut lone_sprite_set = all_lone_sprites().borrow_mut();
     *bw::first_active_lone_sprite = match globals.lone_count {
         0 => null_mut(),
