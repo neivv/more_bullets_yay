@@ -724,47 +724,54 @@ unsafe fn load_sprites(file: *mut c_void) -> Result<(), LoadError> {
 
     let size_limit = bincode::Bounded(SPRITE_SAVE_MAX_SIZE as u64);
     let globals: SaveGlobals = bincode::deserialize_from(&mut reader, size_limit)?;
-    let mut sprites = sprite_array().borrow_mut();
-    let mut images = image_array().borrow_mut();
-    let mapping = allocate_sprites(&mut sprites, globals.sprite_count);
-    let (mut lone_sprites, lone_mapping) =
-        allocate_lone_sprites(globals.lone_count + globals.fow_count);
-    for sprite_result in sprites.iter() {
-        let serialized = bincode::deserialize_from(&mut reader, size_limit)?;
-        let sprite = deserialize_sprite(&serialized, &mapping, sprite_result, &mut images)?;
-        *sprite_result = sprite;
-        if reader.total_out() > SPRITE_SAVE_MAX_SIZE as u64 {
-            return Err(LoadError::SizeLimit)
+    let mapping;
+    let lone_mapping;
+    let mut lone_sprites;
+    {
+        let mut sprites = sprite_array().borrow_mut();
+        let mut images = image_array().borrow_mut();
+        mapping = allocate_sprites(&mut sprites, globals.sprite_count);
+        let (lone_sprites_, lone_mapping_) =
+            allocate_lone_sprites(globals.lone_count + globals.fow_count);
+        lone_sprites = lone_sprites_;
+        lone_mapping = lone_mapping_;
+        for sprite_result in sprites.iter() {
+            let serialized = bincode::deserialize_from(&mut reader, size_limit)?;
+            let sprite = deserialize_sprite(&serialized, &mapping, sprite_result, &mut images)?;
+            *sprite_result = sprite;
+            if reader.total_out() > SPRITE_SAVE_MAX_SIZE as u64 {
+                return Err(LoadError::SizeLimit)
+            }
+        }
+
+        for lone_sprite_result in &mut lone_sprites {
+            let serialized = bincode::deserialize_from(&mut reader, size_limit)?;
+            let sprite = deserialize_lone_sprite(&serialized, &mapping)?;
+            **lone_sprite_result = sprite;
+            if reader.total_out() > SPRITE_SAVE_MAX_SIZE as u64 {
+                return Err(LoadError::SizeLimit)
+            }
+        }
+        for i in 0..lone_sprites.len() {
+            if i != 0 && i != globals.lone_count as usize {
+                lone_sprites[i - 1].next = &mut *lone_sprites[i];
+            }
+            if i != globals.lone_count as usize - 1 && i != lone_sprites.len() - 1 {
+                lone_sprites[i + 1].prev = &mut *lone_sprites[i];
+            }
+        }
+
+        let mut sprite_set = all_sprites().borrow_mut();
+        for sprite in sprites.iter() {
+            sprite_set.insert(SendPtr(sprite));
         }
     }
 
-    for lone_sprite_result in &mut lone_sprites {
-        let serialized = bincode::deserialize_from(&mut reader, size_limit)?;
-        let sprite = deserialize_lone_sprite(&serialized, &mapping)?;
-        **lone_sprite_result = sprite;
-        if reader.total_out() > SPRITE_SAVE_MAX_SIZE as u64 {
-            return Err(LoadError::SizeLimit)
-        }
-    }
-    for i in 0..lone_sprites.len() {
-        if i != 0 && i != globals.lone_count as usize {
-            lone_sprites[i - 1].next = &mut *lone_sprites[i];
-        }
-        if i != globals.lone_count as usize - 1 && i != lone_sprites.len() - 1 {
-            lone_sprites[i + 1].prev = &mut *lone_sprites[i];
-        }
-    }
-
-    let mut sprite_set = all_sprites().borrow_mut();
-    for sprite in sprites.iter() {
-        sprite_set.insert(SendPtr(sprite));
-    }
     *bw::first_free_sprite = null_mut();
     *bw::last_free_sprite = null_mut();
     *bw::first_free_image = null_mut();
     *bw::last_free_image = null_mut();
 
-    let mut lone_sprite_set = all_lone_sprites().borrow_mut();
     *bw::first_active_lone_sprite = match globals.lone_count {
         0 => null_mut(),
         _ => &mut *lone_sprites[0],
@@ -782,8 +789,11 @@ unsafe fn load_sprites(file: *mut c_void) -> Result<(), LoadError> {
         _ => &mut **lone_sprites.last_mut().unwrap(),
     };
 
-    for sprite in lone_sprites {
-        lone_sprite_set.insert(Box::into_raw(sprite).into());
+    {
+        let mut lone_sprite_set = all_lone_sprites().borrow_mut();
+        for sprite in lone_sprites {
+            lone_sprite_set.insert(Box::into_raw(sprite).into());
+        }
     }
 
     for (i, (begin, end)) in globals.horizontal_lines.into_iter().enumerate() {
@@ -792,10 +802,18 @@ unsafe fn load_sprites(file: *mut c_void) -> Result<(), LoadError> {
     }
     *bw::cursor_marker = lone_mapping.pointer(globals.cursor_marker)?;
 
-    let mut global_mapping = sprite_load_mapping().borrow_mut();
-    *global_mapping = mapping;
-    let mut lone_global_mapping = lone_sprite_load_mapping().borrow_mut();
-    *lone_global_mapping = lone_mapping;
+    {
+        let mut global_mapping = sprite_load_mapping().borrow_mut();
+        *global_mapping = mapping;
+        let mut lone_global_mapping = lone_sprite_load_mapping().borrow_mut();
+        *lone_global_mapping = lone_mapping;
+    }
+    // Refill sprite / image list for GPTP which allocates images from reading through
+    // first_free_image during hooks.
+    // Most of the time the refill_sprite_image_list at create_sprite_hook is good enough,
+    // but loading a save may cause something else that allocates images to run before
+    // any sprites are created.
+    refill_sprite_image_list();
     Ok(())
 }
 
